@@ -1,13 +1,5 @@
 {
-  "name": "stadiumpilot",
-  "version": "1.0.0",
-  "description": "AI-powered stadium concierge for 2026 FIFA World Cup fans",
-  "scripts": {
-    "dev": "node dev.js",
-    "server": "npm --prefix server run dev",
-    "client": "npm --prefix client run dev",
-    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
-    "seed": "npm --prefix server run seed",
-    "test": "node tests/edge-case-tests.js"
+  "dependencies": {
+    "playwright": "^1.61.1"
   }
 }
