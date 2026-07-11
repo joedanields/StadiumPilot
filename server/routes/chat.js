@@ -1,16 +1,27 @@
 const express = require('express');
-const OpenAI = require('openai');
 const { SYSTEM_PROMPT, buildUserPrompt } = require('../prompts/templates');
 const { STADIUM_DATA } = require('../data/stadium');
 const { getLiveState } = require('../data/liveState');
 
 const router = express.Router();
 
-const getClient = () => {
-  return new OpenAI({
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    baseURL: 'https://api.deepseek.com/v1',
-  });
+// gemini-2.5-flash (the original target) is rejected for new API keys ("no longer
+// available to new users"), so default to its successor; override via GEMINI_MODEL.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+// Mirrors the JSON contract in PROMPT_DESIGN.md section 2 — if one changes, change both.
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    language_detected: { type: 'string' },
+    answer: { type: 'string' },
+    reasoning: { type: 'string' },
+    route: { type: 'array', items: { type: 'string' } },
+    alert_level: { type: 'string', enum: ['normal', 'caution', 'emergency'] },
+    clarifying_question: { type: 'string', nullable: true },
+  },
+  required: ['language_detected', 'answer', 'reasoning', 'route', 'alert_level'],
 };
 
 router.post('/', async (req, res) => {
@@ -19,6 +30,10 @@ router.post('/', async (req, res) => {
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'Message is required' });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'AI service not configured: GEMINI_API_KEY is missing' });
     }
 
     const userProfile = {
@@ -35,129 +50,63 @@ router.post('/', async (req, res) => {
       stadiumData: STADIUM_DATA,
     });
 
-    if (!process.env.DEEPSEEK_API_KEY) {
-      const mockResponse = generateMockResponse(message.trim(), userProfile, liveState);
-      return res.json({ ...mockResponse, liveState });
+    // Free-tier Gemini intermittently returns 429/503 under load — retry briefly.
+    let geminiRes;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      geminiRes = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': process.env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: RESPONSE_SCHEMA,
+            maxOutputTokens: 2048,
+          },
+        }),
+      });
+      if (geminiRes.status !== 429 && geminiRes.status !== 503) break;
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
     }
 
-    const client = getClient();
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
-      max_tokens: 1024,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-    });
+    if (!geminiRes.ok) {
+      const errBody = await geminiRes.text();
+      console.error(`Gemini API error ${geminiRes.status}:`, errBody);
+      return res.status(502).json({ error: 'AI service request failed', status: geminiRes.status });
+    }
 
-    const text = response.choices[0].message.content;
+    const data = await geminiRes.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      console.error('Gemini returned no text:', JSON.stringify(data).slice(0, 500));
+      return res.status(502).json({ error: 'AI service returned an empty response' });
+    }
+
     let parsed;
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { answer: text, reasoning: 'N/A' };
-    } catch {
-      parsed = { answer: text, reasoning: 'Response generated', alert_level: 'normal', route: [], clarifying_question: null, language_detected: 'unknown' };
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      console.error('Failed to parse Gemini JSON:', text.slice(0, 500));
+      return res.status(502).json({ error: 'AI service returned malformed JSON' });
     }
 
-    res.json({ ...parsed, liveState });
+    res.json({
+      language_detected: parsed.language_detected || 'unknown',
+      answer: parsed.answer,
+      reasoning: parsed.reasoning,
+      route: Array.isArray(parsed.route) ? parsed.route : [],
+      alert_level: parsed.alert_level || 'normal',
+      clarifying_question: parsed.clarifying_question ?? null,
+      liveState,
+    });
   } catch (err) {
     console.error('Chat error:', err);
     res.status(500).json({ error: 'Failed to process message', detail: err.message });
   }
 });
-
-function generateMockResponse(message, profile, liveState) {
-  const lower = message.toLowerCase();
-
-  const emergencyKeywords = ['dizzy', 'chest pain', 'help', 'emergency', 'fallen', 'unconscious', 'breathing', 'heart attack', 'seizure'];
-  if (emergencyKeywords.some(kw => lower.includes(kw))) {
-    return {
-      language_detected: 'en',
-      answer: 'This is an emergency situation. Please proceed immediately to First Aid Station North (nearest medical point). Security has been notified. Stay calm and follow the route shown on the map.',
-      reasoning: 'The fan reported a medical concern. Per safety protocol, normal navigation is overridden and the nearest medical facility is the priority. First Aid Station North at coordinates (45,10) is closest to the current zone.',
-      route: ['Current Location', 'First Aid Station North'],
-      alert_level: 'emergency',
-      clarifying_question: null,
-    };
-  }
-
-  if (lower.includes('wheelchair') || profile.accessibility === 'wheelchair') {
-    const accessibleAmenities = STADIUM_DATA.amenities.filter(a => a.accessible);
-    return {
-      language_detected: 'en',
-      answer: 'I found several accessible routes for you. The nearest accessible restroom is Restroom Block A at (20,25). All pathways to this point use ramps — no stairs required.',
-      reasoning: 'Wheelchair accessibility is a hard constraint. I filtered out all stairs-only paths (Sections 114 and 214 corridors) and selected routes with confirmed ramp access. Restroom Block A is the closest accessible facility.',
-      route: ['Current Location', 'West Corridor (accessible)', 'Restroom Block A'],
-      alert_level: 'normal',
-      clarifying_question: null,
-    };
-  }
-
-  if (lower.includes('bathroom') || lower.includes('restroom') || lower.includes('toilet')) {
-    return {
-      language_detected: 'en',
-      answer: 'The nearest restroom is Restroom Block A at coordinates (20,25). It is wheelchair accessible and currently has low crowd density. Head towards the West corridor.',
-      reasoning: 'Restroom Block A is closest to the average fan position and has accessible facilities. The West zone currently has medium crowd density, so the path should be relatively clear.',
-      route: ['Current Location', 'West Corridor', 'Restroom Block A'],
-      alert_level: 'normal',
-      clarifying_question: null,
-    };
-  }
-
-  if (lower.includes('food') || lower.includes('eat') || lower.includes('hungry') || lower.includes('snack')) {
-    const dietary = profile.dietary || [];
-    let venueName = 'Burger Palace';
-    let tags = ['burgers', 'american'];
-
-    if (dietary.includes('vegan') || dietary.includes('vegetarian')) {
-      venueName = 'Green Bowl';
-      tags = ['vegan', 'vegetarian', 'healthy'];
-    } else if (dietary.includes('nut-free') || dietary.includes('nut allergy')) {
-      venueName = 'Nut-Free Kitchen';
-      tags = ['nut-free', 'allergy-friendly'];
-    } else if (dietary.includes('halal')) {
-      venueName = 'Halal Grill';
-      tags = ['halal', 'middle-eastern'];
-    } else if (dietary.includes('gluten-free')) {
-      venueName = 'Green Bowl';
-      tags = ['gluten-free', 'healthy'];
-    }
-
-    const zoneDensities = liveState.crowdDensity;
-    return {
-      language_detected: 'en',
-      answer: `I recommend ${venueName} — it matches your dietary needs (${tags.join(', ')}). It's located in the central area. Current crowd density is ${zoneDensities['north'] || 'medium'}.`,
-      reasoning: `Selected ${venueName} based on dietary profile match. Considered crowd density across zones to suggest the least crowded route. The venue is wheelchair accessible.`,
-      route: ['Current Location', venueName],
-      alert_level: 'normal',
-      clarifying_question: null,
-    };
-  }
-
-  if (lower.includes('section') || lower.includes('seat') || lower.includes('gate')) {
-    const gateStatuses = liveState.gateStatus;
-    const openGates = Object.entries(gateStatuses).filter(([_, s]) => s === 'open');
-    const recommendedGate = openGates.length > 0 ? openGates[0][0] : 'G1';
-    const gateInfo = STADIUM_DATA.gates.find(g => g.id === recommendedGate);
-
-    return {
-      language_detected: 'en',
-      answer: `To reach your section, I recommend using ${gateInfo?.name || 'North Gate'}. It is currently open with good flow. Head through the main concourse to your section.`,
-      reasoning: `Analyzed gate statuses: ${Object.entries(gateStatuses).map(([k, v]) => `${k}:${v}`).join(', ')}. ${gateInfo?.name} is open and has the best flow for reaching your section.`,
-      route: [gateInfo?.name || 'North Gate', 'Main Concourse', 'Your Section'],
-      alert_level: 'normal',
-      clarifying_question: null,
-    };
-  }
-
-  return {
-    language_detected: 'en',
-    answer: 'I can help you navigate the stadium! You can ask me about finding your seat, nearest restrooms, food options, or any accessibility needs. What would you like to know?',
-    reasoning: 'The query was too vague to provide a specific navigation answer. Offering general guidance to help the fan clarify their needs.',
-    route: [],
-    alert_level: 'normal',
-    clarifying_question: 'Could you tell me what specifically you need help with? For example: finding your seat, nearest restroom, food options, or getting to a medical point?',
-  };
-}
 
 module.exports = router;
