@@ -149,6 +149,7 @@ export default function App() {
             stadiumData={stadiumData}
             liveState={liveState}
             currentRoute={currentRoute}
+            currentLocation={profile.location}
           />
         </div>
         <div className="side-panel">

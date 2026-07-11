@@ -3,6 +3,9 @@ import { useMemo } from 'react';
 const MAP_WIDTH = 500;
 const MAP_HEIGHT = 500;
 const SCALE = 5;
+// Gates sit on the map boundary (x/y = 0 or 100), so pad the viewBox to keep
+// their icons and labels from being clipped at the edges.
+const PAD = 32;
 
 const DENSITY_COLORS = {
   low: '#4ade80',
@@ -21,12 +24,16 @@ const AMENITY_STYLES = {
 };
 
 function MapLabel({ x, y, children, offset = 12, className = '' }) {
+  const w = children.length * 5.5 + 8;
+  // Clamp the label box inside the padded viewBox so edge labels stay readable
+  const bx = Math.max(-PAD + 2, Math.min(x - w / 2, MAP_WIDTH + PAD - w - 2));
+  const by = Math.max(-PAD + 2, Math.min(y + offset - 9, MAP_HEIGHT + PAD - 14));
   return (
     <g className={`map-label-group ${className}`}>
       <rect
-        x={x - 2}
-        y={y + offset - 9}
-        width={children.length * 5.5 + 8}
+        x={bx}
+        y={by}
+        width={w}
         height={12}
         rx={3}
         fill="rgba(15,23,42,0.85)"
@@ -34,8 +41,8 @@ function MapLabel({ x, y, children, offset = 12, className = '' }) {
         strokeWidth={0.5}
       />
       <text
-        x={x + (children.length * 5.5 + 8) / 2 - 2}
-        y={y + offset}
+        x={bx + w / 2}
+        y={by + 9}
         textAnchor="middle"
         fill="#cbd5e1"
         fontSize={7}
@@ -106,11 +113,22 @@ function AmenityIcon({ amenity, isOnRoute }) {
   );
 }
 
-export default function StadiumMap({ stadiumData, liveState, currentRoute }) {
+export default function StadiumMap({ stadiumData, liveState, currentRoute, currentLocation }) {
+  const youPoint = useMemo(() => {
+    if (!stadiumData) return null;
+    return resolvePoint(currentLocation, stadiumData) || { x: 50, y: 50, label: 'You' };
+  }, [currentLocation, stadiumData]);
+
   const routePoints = useMemo(() => {
     if (!stadiumData || !currentRoute.length) return [];
-    return resolveRoutePoints(currentRoute, stadiumData);
-  }, [currentRoute, stadiumData]);
+    const pts = resolveRoutePoints(currentRoute, stadiumData, youPoint);
+    // The model sometimes returns only the destination — always draw the path
+    // starting from the fan's actual location so "You" never lands on the target.
+    if (pts.length && (pts[0].x !== youPoint.x || pts[0].y !== youPoint.y)) {
+      return [{ ...youPoint, label: 'You' }, ...pts];
+    }
+    return pts;
+  }, [currentRoute, stadiumData, youPoint]);
 
   const routeNames = useMemo(() => {
     return new Set(routePoints.map(p => p.label));
@@ -127,7 +145,7 @@ export default function StadiumMap({ stadiumData, liveState, currentRoute }) {
   return (
     <div className="stadium-map-container">
       <h2 className="section-title">Stadium Map</h2>
-      <svg viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} className="stadium-map">
+      <svg viewBox={`${-PAD} ${-PAD} ${MAP_WIDTH + PAD * 2} ${MAP_HEIGHT + PAD * 2}`} className="stadium-map">
         <defs>
           <radialGradient id="fieldGrad">
             <stop offset="0%" stopColor="#22c55e" />
@@ -225,15 +243,12 @@ export default function StadiumMap({ stadiumData, liveState, currentRoute }) {
         })}
 
         {/* Amenities - different shapes, quiet unless on route */}
-        {stadiumData.amenities.map(amenity => {
-          const onRoute = isOnRoute(amenity.name);
-          return (
-            <g key={amenity.id}>
-              <AmenityIcon amenity={amenity} isOnRoute={onRoute} />
-              {onRoute && <MapLabel x={amenity.location.x * SCALE} y={amenity.location.y * SCALE} offset={14}>{amenity.name}</MapLabel>}
-            </g>
-          );
-        })}
+        {/* Route waypoints already carry their own labels, so none here */}
+        {stadiumData.amenities.map(amenity => (
+          <g key={amenity.id}>
+            <AmenityIcon amenity={amenity} isOnRoute={isOnRoute(amenity.name)} />
+          </g>
+        ))}
 
         {/* Route path */}
         {routePath && (
@@ -241,6 +256,14 @@ export default function StadiumMap({ stadiumData, liveState, currentRoute }) {
             <path d={routePath} fill="none" stroke="#06b6d4" strokeWidth={5} strokeLinecap="round" opacity={0.3} />
             <path d={routePath} fill="none" stroke="#06b6d4" strokeWidth={3} strokeDasharray="10,5" strokeLinecap="round" opacity={0.9} />
             <path d={routePath} fill="none" stroke="#22d3ee" strokeWidth={1.5} strokeDasharray="10,5" strokeLinecap="round" />
+          </g>
+        )}
+
+        {/* Current location — always visible, dominant when no route is active */}
+        {youPoint && routePoints.length === 0 && (
+          <g filter="url(#glow)">
+            <circle cx={youPoint.x * SCALE} cy={youPoint.y * SCALE} r={10} fill="#22d3ee" stroke="#ffffff" strokeWidth={3} />
+            <text x={youPoint.x * SCALE} y={youPoint.y * SCALE + 1} textAnchor="middle" fill="#0f172a" fontSize={9} fontWeight="800" style={{ pointerEvents: 'none' }}>You</text>
           </g>
         )}
 
@@ -258,7 +281,9 @@ export default function StadiumMap({ stadiumData, liveState, currentRoute }) {
               {!isFirst && (
                 <text x={x} y={y - 1} textAnchor="middle" fill="white" fontSize={5} fontWeight="bold" style={{ pointerEvents: 'none' }}>{i}</text>
               )}
-              <MapLabel x={x} y={y} offset={isFirst ? 16 : -16} className={isFirst ? 'map-label--you' : ''}>{point.label}</MapLabel>
+              {!isFirst && (
+                <MapLabel x={x} y={y} offset={-16}>{point.label}</MapLabel>
+              )}
             </g>
           );
         })}
@@ -290,7 +315,7 @@ export default function StadiumMap({ stadiumData, liveState, currentRoute }) {
   );
 }
 
-function resolveRoutePoints(route, stadiumData) {
+function buildLookup(stadiumData) {
   const lookup = {};
   stadiumData.gates.forEach(g => {
     lookup[g.name.toLowerCase()] = { x: g.location.x, y: g.location.y, label: g.name };
@@ -304,15 +329,24 @@ function resolveRoutePoints(route, stadiumData) {
     lookup[a.name.toLowerCase()] = { x: a.location.x, y: a.location.y, label: a.name };
     lookup[a.id.toLowerCase()] = { x: a.location.x, y: a.location.y, label: a.name };
   });
-
-  lookup['current location'] = { x: 50, y: 50, label: 'You' };
   lookup['main concourse'] = { x: 50, y: 50, label: 'Concourse' };
-  lookup['your section'] = { x: 50, y: 30, label: 'Section' };
   lookup['west corridor'] = { x: 30, y: 40, label: 'West Corr.' };
   lookup['west corridor (accessible)'] = { x: 30, y: 40, label: 'Accessible' };
+  return lookup;
+}
+
+function resolvePoint(name, stadiumData) {
+  if (!name) return null;
+  return buildLookup(stadiumData)[name.toLowerCase()] || null;
+}
+
+function resolveRoutePoints(route, stadiumData, youPoint) {
+  const lookup = buildLookup(stadiumData);
+  lookup['current location'] = { ...youPoint, label: 'You' };
+  lookup['your section'] = { ...youPoint, label: 'You' };
 
   return route.map(point => {
     const key = point.toLowerCase();
-    return lookup[key] || { x: 50, y: 50, label: point.substring(0, 12) };
+    return lookup[key] || { ...youPoint, label: point.substring(0, 12) };
   });
 }
