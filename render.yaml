@@ -3,7 +3,8 @@ services:
     name: stadiumpilot
     runtime: node
     plan: free
-    buildCommand: cd client && npm ci && npm run build && cd ../server && npm ci
+    # --include=dev: NODE_ENV=production makes npm ci skip devDependencies, but vite (the build tool) lives there
+    buildCommand: cd client && npm ci --include=dev && npm run build && cd ../server && npm ci
     startCommand: cd server && node server.js
     healthCheckPath: /api/health
     envVars:
