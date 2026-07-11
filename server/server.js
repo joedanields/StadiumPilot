@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -18,12 +19,24 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// In production (e.g. Render) the built client is served from this same server,
+// so the browser hits /api on the same origin — no CORS or proxy needed.
+const clientDist = path.join(__dirname, '../client/dist');
+app.use(express.static(clientDist));
+app.get(/^\/(?!api\/).*/, (req, res) => {
+  res.sendFile(path.join(clientDist, 'index.html'));
+});
+
 const start = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/stadiumpilot');
-    console.log('Connected to MongoDB');
-  } catch (err) {
-    console.log('MongoDB not available, running without persistence');
+  if (process.env.MONGODB_URI) {
+    try {
+      await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 3000 });
+      console.log('Connected to MongoDB');
+    } catch (err) {
+      console.log('MongoDB not available, running without persistence');
+    }
+  } else {
+    console.log('MONGODB_URI not set, running without persistence');
   }
 
   app.listen(PORT, () => {

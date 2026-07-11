@@ -50,6 +50,18 @@ router.post('/', async (req, res) => {
       stadiumData: STADIUM_DATA,
     });
 
+    const generationConfig = {
+      responseMimeType: 'application/json',
+      responseSchema: RESPONSE_SCHEMA,
+      // Thinking tokens count against maxOutputTokens and can truncate longer
+      // (e.g. French) JSON responses — keep the cap high, thinking off.
+      maxOutputTokens: 8192,
+    };
+    // Only thinking-capable models (2.5+/3.x) accept thinkingConfig; 2.0 rejects it.
+    if (!GEMINI_MODEL.includes('gemini-2.0')) {
+      generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+
     // Free-tier Gemini intermittently returns 429/503 under load — retry briefly.
     let geminiRes;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -62,11 +74,7 @@ router.post('/', async (req, res) => {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: RESPONSE_SCHEMA,
-            maxOutputTokens: 2048,
-          },
+          generationConfig,
         }),
       });
       if (geminiRes.status !== 429 && geminiRes.status !== 503) break;
