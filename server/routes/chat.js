@@ -1,5 +1,5 @@
 const express = require('express');
-const Anthropic = require('@anthropic-ai/sdk').default;
+const OpenAI = require('openai');
 const { SYSTEM_PROMPT, buildUserPrompt } = require('../prompts/templates');
 const { STADIUM_DATA } = require('../data/stadium');
 const { getLiveState } = require('../data/liveState');
@@ -7,7 +7,10 @@ const { getLiveState } = require('../data/liveState');
 const router = express.Router();
 
 const getClient = () => {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return new OpenAI({
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    baseURL: 'https://api.deepseek.com/v1',
+  });
 };
 
 router.post('/', async (req, res) => {
@@ -32,20 +35,22 @@ router.post('/', async (req, res) => {
       stadiumData: STADIUM_DATA,
     });
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.DEEPSEEK_API_KEY) {
       const mockResponse = generateMockResponse(message.trim(), userProfile, liveState);
       return res.json({ ...mockResponse, liveState });
     }
 
     const client = getClient();
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const response = await client.chat.completions.create({
+      model: 'deepseek-chat',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
     });
 
-    const text = response.content[0].text;
+    const text = response.choices[0].message.content;
     let parsed;
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/);

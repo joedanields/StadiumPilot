@@ -3,14 +3,11 @@
   "version": "1.0.0",
   "description": "AI-powered stadium concierge for 2026 FIFA World Cup fans",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "cd server && npm run dev",
-    "client": "cd client && npm run dev",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
-    "seed": "cd server && node data/seed.js",
-    "test": "cd tests && node edge-case-tests.js"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
+    "dev": "node dev.js",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "seed": "npm --prefix server run seed",
+    "test": "node tests/edge-case-tests.js"
   }
 }
