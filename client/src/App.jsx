@@ -18,6 +18,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([]);
   const [currentRoute, setCurrentRoute] = useState([]);
   const [alertLevel, setAlertLevel] = useState('normal');
+  const [isThinking, setIsThinking] = useState(false);
   const [profile, setProfile] = useState({
     accessibility: 'none',
     dietary: [],
@@ -50,8 +51,10 @@ export default function App() {
   };
 
   const sendMessage = async (message) => {
+    if (isThinking) return;
     const userMsg = { role: 'user', content: message, timestamp: Date.now() };
     setChatHistory(prev => [...prev, userMsg]);
+    setIsThinking(true);
 
     try {
       const res = await fetch('/api/chat', {
@@ -60,6 +63,7 @@ export default function App() {
         body: JSON.stringify({ message, profile }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
 
       const aiMsg = {
         role: 'assistant',
@@ -75,15 +79,17 @@ export default function App() {
       setCurrentRoute(data.route || []);
       setAlertLevel(data.alert_level || 'normal');
       if (data.liveState) setLiveState(data.liveState);
-    } catch {
+    } catch (err) {
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: 'Sorry, I could not process your request. Please try again.',
-        reasoning: 'API connection failed.',
+        content: 'Sorry, I could not process your request. Please try again in a moment.',
+        reasoning: err.message || 'API connection failed.',
         route: [],
         alert_level: 'normal',
         timestamp: Date.now(),
       }]);
+    } finally {
+      setIsThinking(false);
     }
   };
 
@@ -135,6 +141,7 @@ export default function App() {
                   className={`dietary-pill ${profile.dietary.includes(opt.value) ? 'active' : ''}`}
                   onClick={() => toggleDietary(opt.value)}
                   type="button"
+                  aria-pressed={profile.dietary.includes(opt.value)}
                 >
                   {opt.label}
                 </button>
@@ -157,6 +164,7 @@ export default function App() {
             chatHistory={chatHistory}
             onSend={sendMessage}
             alertLevel={alertLevel}
+            isThinking={isThinking}
           />
           <ReasoningPanel
             lastMessage={chatHistory[chatHistory.length - 1]}

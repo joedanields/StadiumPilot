@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 
-export default function ChatPanel({ chatHistory, onSend, alertLevel }) {
+export default function ChatPanel({ chatHistory, onSend, alertLevel, isThinking }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory]);
+  }, [chatHistory, isThinking]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isThinking) return;
     onSend(input.trim());
     setInput('');
   };
@@ -28,12 +28,12 @@ export default function ChatPanel({ chatHistory, onSend, alertLevel }) {
       <h2>Concierge Chat</h2>
 
       {alertLevel === 'emergency' && (
-        <div className="emergency-banner">
+        <div className="emergency-banner" role="alert">
           EMERGENCY — Medical/security alert active
         </div>
       )}
 
-      <div className="chat-messages">
+      <div className="chat-messages" role="log" aria-live="polite" aria-label="Conversation with StadiumPilot">
         {chatHistory.length === 0 && (
           <div className="chat-empty">
             <p>Welcome to StadiumPilot! Ask me anything about navigating the stadium.</p>
@@ -72,6 +72,12 @@ export default function ChatPanel({ chatHistory, onSend, alertLevel }) {
             )}
           </div>
         ))}
+        {isThinking && (
+          <div className="chat-msg assistant chat-msg--thinking">
+            <div className="msg-role">StadiumPilot</div>
+            <div className="msg-content">Thinking…</div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -80,9 +86,11 @@ export default function ChatPanel({ chatHistory, onSend, alertLevel }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           placeholder="Ask about navigation, food, restrooms, accessibility..."
-          disabled={false}
+          aria-label="Message StadiumPilot"
+          maxLength={1000}
+          disabled={isThinking}
         />
-        <button type="submit">Send</button>
+        <button type="submit" disabled={isThinking}>{isThinking ? '…' : 'Send'}</button>
       </form>
     </div>
   );

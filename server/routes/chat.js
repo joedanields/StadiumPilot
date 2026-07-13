@@ -31,6 +31,9 @@ router.post('/', async (req, res) => {
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'Message is required' });
     }
+    if (message.length > 1000) {
+      return res.status(400).json({ error: 'Message too long (max 1000 characters)' });
+    }
 
     if (!process.env.GEMINI_API_KEY) {
       return res.status(503).json({ error: 'AI service not configured: GEMINI_API_KEY is missing' });

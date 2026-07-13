@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed": "node data/seed.js"
+    "seed": "node data/stadium.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

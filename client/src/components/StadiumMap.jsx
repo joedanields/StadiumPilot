@@ -145,7 +145,12 @@ export default function StadiumMap({ stadiumData, liveState, currentRoute, curre
   return (
     <div className="stadium-map-container">
       <h2 className="section-title">Stadium Map</h2>
-      <svg viewBox={`${-PAD} ${-PAD} ${MAP_WIDTH + PAD * 2} ${MAP_HEIGHT + PAD * 2}`} className="stadium-map">
+      <svg
+        viewBox={`${-PAD} ${-PAD} ${MAP_WIDTH + PAD * 2} ${MAP_HEIGHT + PAD * 2}`}
+        className="stadium-map"
+        role="img"
+        aria-label="Stadium map showing gates, sections, amenities, live crowd density, your current location, and the recommended route"
+      >
         <defs>
           <radialGradient id="fieldGrad">
             <stop offset="0%" stopColor="#22c55e" />
