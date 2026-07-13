@@ -46,6 +46,10 @@ node dev.js
 
 ## How to test
 ```
-# with the server running:
+# unit tests (no API key/quota needed):
+node --test tests/unit.test.js
+
+# edge-case tests (real Gemini calls; needs the server running):
 node tests/edge-case-tests.js
 ```
+Results are logged in `TESTING.md` — update it when behavior changes.

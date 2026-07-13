@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Stadium = require('../models/Stadium');
 
 const STADIUM_DATA = {

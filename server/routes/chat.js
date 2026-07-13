@@ -42,7 +42,11 @@ router.post('/', async (req, res) => {
       location: profile.location || 'unknown',
     };
 
-    const liveState = getLiveState();
+    // Test injection only: lets the edge-case suite pin live state (e.g. a closed
+    // gate) so tests are deterministic. Never active in production.
+    const liveState = (process.env.NODE_ENV !== 'production' && req.body.liveStateOverride)
+      ? req.body.liveStateOverride
+      : getLiveState();
     const userPrompt = buildUserPrompt({
       message: message.trim(),
       profile: userProfile,
