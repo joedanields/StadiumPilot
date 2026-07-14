@@ -25,6 +25,14 @@ export default function App() {
     location: 'Section 101',
   });
 
+  const fetchLiveState = async () => {
+    try {
+      const res = await fetch('/api/stadium/live');
+      const data = await res.json();
+      setLiveState(data);
+    } catch {}
+  };
+
   useEffect(() => {
     let cancelled = false;
     let retryTimer;
@@ -49,14 +57,6 @@ export default function App() {
       clearInterval(interval);
     };
   }, []);
-
-  const fetchLiveState = async () => {
-    try {
-      const res = await fetch('/api/stadium/live');
-      const data = await res.json();
-      setLiveState(data);
-    } catch {}
-  };
 
   const sendMessage = async (message) => {
     if (isThinking) return;
