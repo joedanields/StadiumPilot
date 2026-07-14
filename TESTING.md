@@ -1,10 +1,10 @@
 # StadiumPilot — Testing Log
 
-Two layers, per the challenge rubric ("testing incl. edge cases"):
+Three layers, per the challenge rubric ("testing incl. edge cases"):
 
 1. **Unit tests** (no API key or quota needed) — pure server logic:
    ```
-   node --test tests/unit.test.js
+   npm test        # runs tests/unit.test.js + tests/api.test.js
    ```
    Covers: system prompt pins every JSON-contract field; user prompt carries the fan's
    accessibility/dietary/location constraints, all gates, all amenities, stairs-only flags,
@@ -12,10 +12,15 @@ Two layers, per the challenge rubric ("testing incl. edge cases"):
    and honors its 5s cache; stadium data contains the fixtures the edge cases rely on
    (a stairs-only section, a medical point, an accessible gate, zero kosher vendors).
 
-2. **Edge-case tests** (real Gemini calls, server must be running):
+2. **Endpoint tests** (also API-free, same `npm test`) — the real Express app on an
+   ephemeral port: health and stadium endpoints, input validation (missing /
+   whitespace-only / over-length messages → 400), and the no-key guard — `/api/chat`
+   returns 503 rather than ever fabricating an answer.
+
+3. **Edge-case tests** (real Gemini calls, server must be running):
    ```
-   cd server && npm run dev     # terminal 1
-   node tests/edge-case-tests.js  # terminal 2
+   cd server && npm run dev   # terminal 1
+   npm run test:edge          # terminal 2, from repo root
    ```
    Every response is first validated against the full JSON contract
    `{answer, reasoning, route, language_detected, alert_level, clarifying_question}`,
@@ -26,9 +31,9 @@ Two layers, per the challenge rubric ("testing incl. edge cases"):
    `NODE_ENV !== 'production'`) to pin the North Gate closed — deterministic test
    injection of *input data*, never of AI responses.
 
-## Latest results — 2026-07-12, model `gemini-3.1-flash-lite`
+## Latest results — 2026-07-14, model `gemini-3.1-flash-lite`
 
-Unit tests: **6/6 pass**. Edge cases: **11/11 pass**.
+API-free tests (unit + endpoint): **13/13 pass**. Edge cases: **11/11 pass**.
 
 | # | Case (task.md Phase 5) | Observed behavior | Result |
 |---|---|---|---|

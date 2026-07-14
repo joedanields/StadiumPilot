@@ -15,7 +15,7 @@
 - [ ] Phase 4 done? — Mostly. Screenshot-audited at Section 101: viewBox padding fixed gate/label edge clipping, You marker always visible and correctly placed (was landing on the destination), duplicate route labels removed, dietary chips in place. Remaining: audit label overlap at other fan positions (e.g. Section 214, south sections) before checking this off.
 - [x] Phase 5 done? — Yes. 11 edge cases (all six required by this phase plus contract validation on every response) pass 11/11 against the real Gemini backend; 6 API-free unit tests cover prompt construction and the live-state generator. Results logged in `TESTING.md`. The stairs-conflict case drove a prompt improvement (rule 3 tightened to always offer a next step).
 - [ ] Phase 6 done? — No. Not deployed.
-- [ ] Phase 7 done? — No. No judge-facing README yet.
+- [~] Phase 7 done? — README.md for judges written (live link, screenshot, stack, prompt design, testing). Remaining: LinkedIn post publication + final submission.
 
 ---
 
@@ -60,7 +60,7 @@
 ✅ **Exit condition:** live URL works exactly like local version.
 
 ## Phase 7 — Submission
-- [ ] `README.md` written for judges (what it does, persona/vertical, stack, how to run, live link, screenshot)
+- [x] `README.md` written for judges (what it does, persona/vertical, stack, how to run, live link, screenshot)
 - [ ] LinkedIn post: tools used, prompt design decisions, AI vs. manual coding split
 - [ ] Final rubric self-check (below)
 - [ ] Submit — only your last submission counts, so don't submit until Phase 5 is solid

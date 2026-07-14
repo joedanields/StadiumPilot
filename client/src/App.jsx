@@ -26,21 +26,29 @@ export default function App() {
   });
 
   useEffect(() => {
+    let cancelled = false;
+    let retryTimer;
+
+    const fetchStadiumData = async () => {
+      try {
+        const res = await fetch('/api/stadium');
+        const data = await res.json();
+        if (cancelled) return;
+        setStadiumData(data.stadium);
+        setLiveState(data.liveState);
+      } catch {
+        if (!cancelled) retryTimer = setTimeout(fetchStadiumData, 3000);
+      }
+    };
+
     fetchStadiumData();
     const interval = setInterval(fetchLiveState, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      clearInterval(interval);
+    };
   }, []);
-
-  const fetchStadiumData = async () => {
-    try {
-      const res = await fetch('/api/stadium');
-      const data = await res.json();
-      setStadiumData(data.stadium);
-      setLiveState(data.liveState);
-    } catch {
-      setTimeout(fetchStadiumData, 3000);
-    }
-  };
 
   const fetchLiveState = async () => {
     try {

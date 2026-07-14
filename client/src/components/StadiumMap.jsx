@@ -114,21 +114,23 @@ function AmenityIcon({ amenity, isOnRoute }) {
 }
 
 export default function StadiumMap({ stadiumData, liveState, currentRoute, currentLocation }) {
+  const lookup = useMemo(() => (stadiumData ? buildLookup(stadiumData) : null), [stadiumData]);
+
   const youPoint = useMemo(() => {
-    if (!stadiumData) return null;
-    return resolvePoint(currentLocation, stadiumData) || { x: 50, y: 50, label: 'You' };
-  }, [currentLocation, stadiumData]);
+    if (!lookup) return null;
+    return (currentLocation && lookup[currentLocation.toLowerCase()]) || { x: 50, y: 50, label: 'You' };
+  }, [currentLocation, lookup]);
 
   const routePoints = useMemo(() => {
-    if (!stadiumData || !currentRoute.length) return [];
-    const pts = resolveRoutePoints(currentRoute, stadiumData, youPoint);
+    if (!lookup || !currentRoute.length) return [];
+    const pts = resolveRoutePoints(currentRoute, lookup, youPoint);
     // The model sometimes returns only the destination — always draw the path
     // starting from the fan's actual location so "You" never lands on the target.
     if (pts.length && (pts[0].x !== youPoint.x || pts[0].y !== youPoint.y)) {
       return [{ ...youPoint, label: 'You' }, ...pts];
     }
     return pts;
-  }, [currentRoute, stadiumData, youPoint]);
+  }, [currentRoute, lookup, youPoint]);
 
   const routeNames = useMemo(() => {
     return new Set(routePoints.map(p => p.label));
@@ -340,18 +342,11 @@ function buildLookup(stadiumData) {
   return lookup;
 }
 
-function resolvePoint(name, stadiumData) {
-  if (!name) return null;
-  return buildLookup(stadiumData)[name.toLowerCase()] || null;
-}
-
-function resolveRoutePoints(route, stadiumData, youPoint) {
-  const lookup = buildLookup(stadiumData);
-  lookup['current location'] = { ...youPoint, label: 'You' };
-  lookup['your section'] = { ...youPoint, label: 'You' };
-
+function resolveRoutePoints(route, lookup, youPoint) {
+  const youAliases = { 'current location': true, 'your section': true };
   return route.map(point => {
     const key = point.toLowerCase();
+    if (youAliases[key]) return { ...youPoint, label: 'You' };
     return lookup[key] || { ...youPoint, label: point.substring(0, 12) };
   });
 }
